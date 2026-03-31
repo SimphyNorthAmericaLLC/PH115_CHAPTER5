@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>EXP_5_2_2_WIDGET</title>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+
+<style>
+body{background:#1e1e1e;color:white;font-family:monospace;padding:15px;}
+.editor{display:flex;border:1px solid #444;height:340px;}
+#lineNumbers{background:#111;color:#00ff00;padding:10px 8px;margin:0;text-align:right;overflow:hidden;white-space:pre;user-select:none;}
+#code{flex:1;background:#111;color:white;border:none;padding:10px;resize:none;overflow:auto;white-space:pre;}
+button{margin-top:10px;margin-right:10px;padding:8px 14px;background:#007acc;color:white;border:none;cursor:pointer;}
+#output{background:#000;color:#0f0;padding:10px;margin-top:10px;white-space:pre-wrap;border:1px solid #333;display:none;}
+#plotBox{margin-top:15px;background:white;padding:10px;display:none;}
+#plotBox img{max-width:100%;margin-bottom:10px;}
+</style>
+</head>
+<body>
+
+<h3>Energy Distribution in RL Circuit</h3>
+
+<div class="editor">
+<pre id="lineNumbers"></pre>
+<textarea id="code" wrap="off">import numpy as np
+import matplotlib.pyplot as plt
+
+# Circuit parameters
+R1 = 100  # Ohms
+R2 = 50   # Ohms
+L1 = 1    # Henry
+E1 = 50    # Volts
+t_end = 0.05 # Increased simulation time in seconds
+dt = 0.001 # Smaller time step for more accurate results
+
+# Time vector
+t = np.arange(0, t_end, dt)
+
+# Initialize currents and energy arrays
+i1 = np.zeros_like(t)  # Current through R1 and L1
+i2 = np.zeros_like(t)  # Current through R2
+W_source = np.zeros_like(t)
+W_R1 = np.zeros_like(t)
+W_R2 = np.zeros_like(t)
+W_L = np.zeros_like(t)
+
+# Initial condition
+i1[0] = 0
+i2[0] = E1 / R2
+
+for k in range(1, len(t)):
+    i2[k] = E1 / R2
+    
+    di1_dt = (E1 - R1 * i1[k-1]) / L1
+    i1[k] = i1[k-1] + di1_dt * dt
+    
+    i_total = i1[k] + i2[k]
+    
+    W_source[k] = W_source[k-1] + E1 * i_total * dt
+    W_R1[k] = W_R1[k-1] + R1 * i1[k]**2 * dt
+    W_R2[k] = W_R2[k-1] + R2 * i2[k]**2 * dt
+    W_L[k] = 0.5 * L1 * i1[k]**2
+
+W_resistors = W_R1 + W_R2
+
+plt.figure(figsize=(10, 6))
+plt.plot(t, W_source, 'r', label='Energy from Source')
+plt.plot(t, W_resistors, 'g', label='Energy in Resistors')
+plt.plot(t, W_L, 'b', label='Magnetic Energy in Inductor')
+plt.legend()
+plt.xlabel('Time (s)')
+plt.ylabel('Energy (J)')
+plt.title('Energy Distribution in the Circuit')
+plt.grid(True)
+plt.tight_layout()
+
+print(f'Final energy from source: {W_source[-1]:.2f} J')
+print(f'Final energy dissipated in resistors: {W_resistors[-1]:.2f} J')
+print(f'Final magnetic energy in inductor: {W_L[-1]:.2f} J')
+</textarea>
+</div>
+
+<button onclick="run()">Run Code</button>
+<button onclick="savePNG()">Save PNG</button>
+<button onclick="savePDF()">Save PDF</button>
+
+
+
+<div id="plotBox">
+<img id="plot1">
+</div>
+
+<script>
+const codeEl=document.getElementById("code");
+const lineNumbers=document.getElementById("lineNumbers");
+const plotBox=document.getElementById("plotBox");
+
+
+function updateLineNumbers(){
+    const lines=codeEl.value.split("\n").length;
+    let nums="";
+    for(let i=1;i<=lines;i++) nums+=i+"\n";
+    lineNumbers.textContent=nums;
+}
+
+codeEl.addEventListener("input", updateLineNumbers);
+codeEl.addEventListener("scroll", ()=> lineNumbers.scrollTop = codeEl.scrollTop);
+updateLineNumbers();
+
+let pyodideReady = loadPyodide();
+
+async function run(){
+    plotBox.style.display="none";
+    
+    let pyodide = await pyodideReady;
+    await pyodide.loadPackage(["numpy","matplotlib"]);
+    await pyodide.runPythonAsync(`
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+plt.close('all')
+from io import BytesIO
+import base64
+`);
+    await pyodide.runPythonAsync(codeEl.value);
+
+    const figCount = await pyodide.runPythonAsync("len(plt.get_fignums())");
+    if (figCount > 0) {
+        let img = await pyodide.runPythonAsync(`
+buf=BytesIO()
+plt.savefig(buf,format="png")
+buf.seek(0)
+base64.b64encode(buf.read()).decode()
+`);
+        document.getElementById("plot1").src="data:image/png;base64,"+img;
+        plotBox.style.display="block";
+
+        await pyodide.runPythonAsync(`
+plt.savefig("plot.png")
+plt.savefig("plot.pdf")
+`);
+    }
+
+}
+
+
+async function savePNG(){
+    let pyodide = await pyodideReady;
+    let f = pyodide.FS.readFile("plot.png");
+    let a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([f],{type:"image/png"}));
+    a.download="plot.png";
+    a.click();
+}
+
+async function savePDF(){
+    let pyodide = await pyodideReady;
+    let f = pyodide.FS.readFile("plot.pdf");
+    let a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([f],{type:"application/pdf"}));
+    a.download="plot.pdf";
+    a.click();
+}
+
+</script>
+
+</body>
+</html>

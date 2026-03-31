@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Inductors & RL/RLC Quiz — Restart on Wrong</title>
+<style>
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; line-height: 1.45; margin: 0; padding: 24px; background: #0b0b0b; color: #f2f2f2; }
+  #quiz2 { max-width: 760px; margin: 0 auto; }
+  #q2_stem { margin: .5rem 0 1rem; font-size: 1.05rem; }
+  #q2_options { display: grid; gap: .5rem; }
+  .q2_option { border: 1px solid #333; border-radius: 10px; padding: .6rem .8rem; cursor: pointer; text-align: left; background:#121212; }
+  .q2_option:hover { background: #161616; }
+  #q2_feedback { margin-top: .9rem; min-height: 1.2rem; color:#aaa; }
+  #q2_nav { margin-top: 1rem; display: flex; gap: .6rem; }
+  button { padding: .55rem .9rem; border-radius: 10px; border: 1px solid #333; background: #1b1b1b; color: #f2f2f2; cursor: pointer; }
+</style>
+</head>
+<body>
+  <div id="quiz2">
+    <h3 id="q2_progress"></h3>
+    <div id="q2_stem"></div>
+    <div id="q2_options"></div>
+    <div id="q2_feedback"></div>
+    <div id="q2_nav">
+      <button id="q2_restart" style="margin-left:auto;">Restart</button>
+    </div>
+  </div>
+
+<script>
+/* Exact wording preserved. Option order exactly as provided (no shuffling). */
+const quiz2 = [
+  {
+    stem: "The inductor stores magnetic energy exactly like the capacitor stores electric energy. This statement is: a) true b) false c) only under very specific circumstances",
+    choices: ["true","false","only under very specific circumstances"],
+    correctIndex: 1
+  },
+  {
+    stem: "When an inductor is in series with a resistor connected to a DC source, the moment the switch closes, the resistor’s voltage is: a) zero b) maximum c) none of these apply",
+    choices: ["zero","maximum","none of these apply"],
+    correctIndex: 0
+  },
+  {
+    stem: "The current increase rate in an RL circuit in DC depends on: a) L/R b) R/L c) R only d) L only",
+    choices: ["L/R","R/L","R only","L only"],
+    correctIndex: 0
+  },
+  {
+    stem: "The voltage time-variation across the resistor in an RL circuit in DC depends on: a) L/R only b) R/L only c) R only d) L only e) none of these",
+    choices: ["L/R only","R/L only","R only","L only","none of these"],
+    correctIndex: 0
+  },
+  {
+    stem: "The voltage steady-state across the resistor in an RL circuit in DC depends on: a) L/R only b) R/L only c) R only d) L only e) none of these",
+    choices: ["L/R only","R/L only","R only","L only","none of these"],
+    correctIndex: 2
+  },
+  {
+    stem: "The inductance is a property of: a) frequency b) geometry c) both frequency and geometry",
+    choices: ["frequency","geometry","both frequency and geometry"],
+    correctIndex: 1
+  },
+  {
+    stem: "The sum of instantaneous voltage values across a resistor and inductor in AC is always a) zero, b) non-zero, c) depends on the phase difference.",
+    choices: ["zero","non-zero","depends on the phase difference"],
+    correctIndex: 1
+  },
+  {
+    stem: "The voltage phase difference between an inductor and a resistor in AC is always a) 0°, b) 90°, c) 180°, d) depends on the respective values of resistance and inductance.",
+    choices: ["0°","90°","180°","depends on the respective values of resistance and inductance"],
+    correctIndex: 1
+  },
+  {
+    stem: "The phase difference between the current and the source voltage in a RL circuit in AC is always a) 0°, b) 90°, c) 180°, d) depends on the respective values of resistance and inductance.",
+    choices: ["0°","90°","180°","depends on the respective values of resistance and inductance"],
+    correctIndex: 3
+  },
+  {
+    stem: "A step-up transformer always leads to a) higher electric energy, b) lower electric energy, c) none of these.",
+    choices: ["higher electric energy","lower electric energy","none of these"],
+    correctIndex: 2
+  },
+  {
+    stem: "Higher frequencies in a RL circuit lead to a) continuously higher voltages across the inductor, b) continuously lower voltages across the inductor, c) none of these.",
+    choices: ["continuously higher voltages across the inductor","continuously lower voltages across the inductor","none of these"],
+    correctIndex: 0
+  },
+  {
+    stem: "A capacitor is initially charged and is allowed to discharge through a resistor and an inductor in series. The charge remaining in the capacitor will be a) exponential decrease, b) a sinusoidal exponential decrease, c) a constant sinusoidal decrease, d) none of these.",
+    choices: ["exponential decrease","a sinusoidal exponential decrease","a constant sinusoidal decrease","none of these"],
+    correctIndex: 1
+  },
+  {
+    stem: "An in-series resonant RLC circuit exhibits a maximum current across a) the inductor, b) the capacitor, c) the resistor, d) none of these e) all of these",
+    choices: ["across the inductor","across the capacitor","the resistor","none of these", "all of these"],
+    correctIndex: 4
+  },
+  {
+    stem: "The frequency of an in-series resonant RLC circuit depends on the magnitude(s) of a) inductance and capacitance only, b) inductance only, c) capacitance only, d) resistance only.",
+    choices: ["inductance and capacitance only","inductance only","capacitance only","resistance only"],
+    correctIndex: 0
+  },
+  {
+    stem: "The current of an in-series resonant RLC circuit depends on the magnitude(s) of a) inductance and capacitance, b) inductance, c) capacitance, d) resistance.",
+    choices: ["inductance and capacitance","inductance","capacitance","resistance"],
+    correctIndex: 3
+  },
+  {
+    stem: "A charged capacitor is connected in series to an ideal inductor, with no other source of power. The inductor exhibits a) both typical Ohmic and AC resistance (aka inductive reactance), b) only Ohmic resistance, c) only AC resistance (aka inductive reactance).",
+    choices: ["both typical Ohmic and AC resistance (aka inductive reactance)","only Ohmic resistance","only AC resistance (aka inductive reactance)"],
+    correctIndex: 2
+  }
+];
+
+const els = {
+  progress: document.getElementById('q2_progress'),
+  stem: document.getElementById('q2_stem'),
+  options: document.getElementById('q2_options'),
+  feedback: document.getElementById('q2_feedback'),
+  restart: document.getElementById('q2_restart'),
+};
+
+let idx = 0;
+let score = 0;
+
+function render() {
+  const total = quiz2.length;
+  els.progress.textContent = `Question ${idx+1} of ${total}  ·  Score: ${score}/${total}`;
+  els.stem.textContent = quiz2[idx].stem;
+  els.options.innerHTML = '';
+  els.feedback.textContent = '';
+
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  quiz2[idx].choices.forEach((text, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'q2_option';
+    btn.type = 'button';
+    btn.innerHTML = `<strong>${letters[i]})</strong> ${text}`;
+    btn.addEventListener('click', () => handleChoice(i));
+    els.options.appendChild(btn);
+  });
+}
+
+function handleChoice(i) {
+  const correct = quiz2[idx].correctIndex;
+  if (i === correct) {
+    score++;
+    els.feedback.textContent = 'Correct.';
+    setTimeout(() => {
+      idx++;
+      if (idx < quiz2.length) {
+        render();
+      } else {
+        els.progress.textContent = `Completed · Final Score: ${score}/${quiz2.length}`;
+        els.stem.textContent = 'Quiz finished.';
+        els.options.innerHTML = '';
+        els.feedback.textContent = 'Press Restart to try again.';
+      }
+    }, 600);
+  } else {
+    els.feedback.textContent = 'Incorrect — restarting from Question 1…';
+    setTimeout(() => { idx = 0; score = 0; render(); }, 700);
+  }
+}
+
+els.restart.addEventListener('click', () => { idx = 0; score = 0; render(); });
+render();
+</script>
+</body>
+</html>

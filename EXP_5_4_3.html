@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>EXP_5_4_3_WIDGET</title>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+
+<style>
+body{background:#1e1e1e;color:white;font-family:monospace;padding:15px;}
+.editor{display:flex;border:1px solid #444;height:340px;}
+#lineNumbers{background:#111;color:#00ff00;padding:10px 8px;margin:0;text-align:right;overflow:hidden;white-space:pre;user-select:none;}
+#code{flex:1;background:#111;color:white;border:none;padding:10px;resize:none;overflow:auto;white-space:pre;}
+button{margin-top:10px;margin-right:10px;padding:8px 14px;background:#007acc;color:white;border:none;cursor:pointer;}
+#output{background:#000;color:#0f0;padding:10px;margin-top:10px;white-space:pre-wrap;border:1px solid #333;display:none;}
+#plotBox{margin-top:15px;background:white;padding:10px;display:none;}
+#plotBox img{max-width:100%;margin-bottom:10px;}
+</style>
+</head>
+<body>
+
+<h3>RL Circuit Voltage & Current (Separate Axes)</h3>
+
+<div class="editor">
+<pre id="lineNumbers"></pre>
+<textarea id="code" wrap="off">import numpy as np
+import matplotlib.pyplot as plt
+
+# Given parameters for the RL circuit in AC
+V_peak = 10       # Peak voltage in volts
+f = 100           # Frequency in Hz
+R = 10            # Resistance in ohms
+L = 8.2e-3        # Inductance in henries
+
+# Calculated parameters
+omega = 2 * np.pi * f
+X_L = omega * L
+Z = np.sqrt(R**2 + X_L**2)
+I_peak = V_peak / Z
+phi = np.arctan(X_L / R)  # Phase difference in radians
+phi_degrees = np.degrees(phi)
+
+# Print calculated values
+print("Calculated Values for RL Circuit:")
+print(f"Angular frequency (ω): {omega:.2f} rad/s")
+print(f"Inductive reactance (X_L): {X_L:.2f} Ω")
+print(f"Impedance (Z): {Z:.2f} Ω")
+print(f"Peak current (I_peak): {I_peak:.2f} A")
+print(f"Voltage across R (V_R): {I_peak * R:.2f} V")
+print(f"Voltage across L (V_L): {I_peak * X_L:.2f} V")
+print(f"Phase difference (φ): {phi_degrees:.2f}°")
+
+# Time array for plotting (one period of the AC cycle)
+t = np.linspace(0, 1 / f, 1000)  # One period
+
+# Voltage across the source
+V_source = V_peak * np.sin(omega * t)
+
+# Current in the circuit
+I = I_peak * np.sin(omega * t - phi)
+
+# Plotting with separate y-axes for voltage and current
+fig, ax1 = plt.subplots(figsize=(10, 6))
+
+# Plot source voltage on the left y-axis
+ax1.plot(t, V_source, label="Source Voltage (V)", linestyle='--', color='orange')
+ax1.set_xlabel("Time (s)")
+ax1.set_ylabel("Voltage (V)", color='orange')
+ax1.tick_params(axis='y', labelcolor='orange')
+
+# Create a second y-axis for the current
+ax2 = ax1.twinx()
+ax2.plot(t, I, label="Current (I)", linestyle='-', color='blue')
+ax2.set_ylabel("Current (A)", color='blue')
+ax2.tick_params(axis='y', labelcolor='blue')
+
+# Title and grid
+fig.suptitle("Voltage and Current in RL Circuit with Separate Y-Axes")
+ax1.grid(True)
+
+plt.tight_layout()
+</textarea>
+</div>
+
+<button onclick="run()">Run Code</button>
+<button onclick="savePNG()">Save PNG</button>
+<button onclick="savePDF()">Save PDF</button>
+
+<div id="output"></div>
+
+<div id="plotBox">
+<img id="plot1">
+</div>
+
+<script>
+const codeEl=document.getElementById("code");
+const lineNumbers=document.getElementById("lineNumbers");
+const plotBox=document.getElementById("plotBox");
+const output=document.getElementById("output");
+
+function updateLineNumbers(){
+    const lines=codeEl.value.split("\n").length;
+    let nums="";
+    for(let i=1;i<=lines;i++) nums+=i+"\n";
+    lineNumbers.textContent=nums;
+}
+
+codeEl.addEventListener("input", updateLineNumbers);
+codeEl.addEventListener("scroll", ()=> lineNumbers.scrollTop = codeEl.scrollTop);
+updateLineNumbers();
+
+let pyodideReady = loadPyodide();
+
+async function run(){
+    plotBox.style.display="none";
+    output.textContent="Running...";
+    let pyodide = await pyodideReady;
+    await pyodide.loadPackage(["numpy","matplotlib"]);
+    await pyodide.runPythonAsync(`
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+plt.close('all')
+from io import BytesIO
+import base64
+
+import sys, io
+sys.stdout = io.StringIO()
+`);
+    await pyodide.runPythonAsync(codeEl.value);
+
+    let stdout = await pyodide.runPythonAsync("sys.stdout.getvalue()");
+    output.textContent = stdout || "Execution complete."; output.style.display="block";
+
+    const figCount = await pyodide.runPythonAsync("len(plt.get_fignums())");
+    if (figCount > 0) {
+        let img = await pyodide.runPythonAsync(`
+buf=BytesIO()
+plt.savefig(buf,format="png")
+buf.seek(0)
+base64.b64encode(buf.read()).decode()
+`);
+        document.getElementById("plot1").src="data:image/png;base64,"+img;
+        plotBox.style.display="block";
+
+        await pyodide.runPythonAsync(`
+plt.savefig("plot.png")
+plt.savefig("plot.pdf")
+`);
+    }
+
+}
+
+
+async function savePNG(){
+    let pyodide = await pyodideReady;
+    let f = pyodide.FS.readFile("plot.png");
+    let a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([f],{type:"image/png"}));
+    a.download="plot.png";
+    a.click();
+}
+
+async function savePDF(){
+    let pyodide = await pyodideReady;
+    let f = pyodide.FS.readFile("plot.pdf");
+    let a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([f],{type:"application/pdf"}));
+    a.download="plot.pdf";
+    a.click();
+}
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>EXP_5_6_2_WIDGET</title>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+
+<style>
+body{background:#1e1e1e;color:white;font-family:monospace;padding:15px;}
+.editor{display:flex;border:1px solid #444;height:340px;}
+#lineNumbers{background:#111;color:#00ff00;padding:10px 8px;margin:0;text-align:right;overflow:hidden;white-space:pre;}
+#code{flex:1;background:#111;color:white;border:none;padding:10px;resize:none;overflow:auto;white-space:pre;}
+button{margin-top:10px;margin-right:10px;padding:8px 14px;background:#007acc;color:white;border:none;cursor:pointer;}
+#output{margin-top:15px;background:#000;color:#0f0;padding:10px;white-space:pre-wrap;display:none;border:1px solid #333;}
+#plotBox{margin-top:15px;background:white;padding:10px;display:none;}
+#plotBox img{max-width:100%;margin-bottom:10px;}
+</style>
+
+</head>
+<body>
+
+<h3>Parallel RLC Branch Current Calculation</h3>
+
+<div class="editor">
+<pre id="lineNumbers"></pre>
+<textarea id="code" wrap="off">import math
+
+# Define constants
+R1 = 15  # Ohms
+R2 = 15  # Ohms
+R3 = 15  # Ohms
+L1 = 50e-3  # H (50 mH)
+C1 = 100e-6  # F (100 uF)
+E_peak = 12  # V peak of the AC source
+omega = 120 * math.pi  # Angular frequency
+
+# Impedance magnitudes (Ohms)
+Z_R1 = R1
+Z_R2 = R2
+Z_R3 = R3
+Z_L1 = omega * L1  # Inductive reactance
+Z_C1 = 1 / (omega * C1)  # Capacitive reactance
+
+# Total impedance magnitude of each branch
+Z_top_branch = math.sqrt(Z_R3**2 + Z_L1**2)  # Impedance of R3 and L1 in series
+Z_middle_branch = math.sqrt(Z_R2**2 + Z_C1**2)  # Impedance of R2 and C1 in series
+Z_bottom_branch = Z_R1  # Impedance of R1
+
+# Calculate the equivalent impedance of the parallel branches
+Z_total = 1 / (1 / Z_top_branch + 1 / Z_middle_branch + 1 / Z_bottom_branch)
+
+# Calculate the total current from the source
+I_total = E_peak / Z_total
+
+# Current division for each branch
+I_top_branch = I_total * (Z_total / Z_top_branch)
+I_middle_branch = I_total * (Z_total / Z_middle_branch)
+I_bottom_branch = I_total * (Z_total / Z_bottom_branch)
+
+# Display results
+print("Total Current (I_total): {:.2f} A".format(I_total))
+print("Current through top branch (I_top_branch): {:.2f} A".format(I_top_branch))
+print("Current through middle branch (I_middle_branch): {:.2f} A".format(I_middle_branch))
+print("Current through bottom branch (I_bottom_branch): {:.2f} A".format(I_bottom_branch))
+</textarea>
+</div>
+
+<button onclick="run()">Run Code</button>
+
+<div id="output"></div>
+
+<div id="plotBox">
+<img id="plot1">
+</div>
+
+<script>
+const codeEl=document.getElementById("code");
+const lineNumbers=document.getElementById("lineNumbers");
+const plotBox=document.getElementById("plotBox");
+const output=document.getElementById("output");
+
+function updateLineNumbers(){
+    const lines=codeEl.value.split("\n").length;
+    let nums="";
+    for(let i=1;i<=lines;i++) nums+=i+"\n";
+    lineNumbers.textContent=nums;
+}
+
+codeEl.addEventListener("input", updateLineNumbers);
+codeEl.addEventListener("scroll", ()=> lineNumbers.scrollTop = codeEl.scrollTop);
+updateLineNumbers();
+
+let pyodideReady = loadPyodide();
+
+async function run(){
+    plotBox.style.display="none";
+    output.textContent="Running..."; output.style.display="block";
+    let pyodide = await pyodideReady;
+    await pyodide.loadPackage([]);
+    await pyodide.runPythonAsync(`
+import sys, io
+sys.stdout = io.StringIO()
+`);
+    await pyodide.runPythonAsync(codeEl.value);
+
+    let stdout = await pyodide.runPythonAsync("sys.stdout.getvalue()");
+    output.textContent = stdout || "Execution complete."; output.style.display="block";
+
+}
+
+
+</script>
+
+</body>
+</html>

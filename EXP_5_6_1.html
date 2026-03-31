@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>EXP_5_6_1_WIDGET</title>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+
+<style>
+body{background:#1e1e1e;color:white;font-family:monospace;padding:15px;}
+.editor{display:flex;border:1px solid #444;height:340px;}
+#lineNumbers{background:#111;color:#00ff00;padding:10px 8px;margin:0;text-align:right;overflow:hidden;white-space:pre;}
+#code{flex:1;background:#111;color:white;border:none;padding:10px;resize:none;overflow:auto;white-space:pre;}
+button{margin-top:10px;margin-right:10px;padding:8px 14px;background:#007acc;color:white;border:none;cursor:pointer;}
+#output{margin-top:15px;background:#000;color:#0f0;padding:10px;white-space:pre-wrap;display:none;border:1px solid #333;}
+#plotBox{margin-top:15px;background:white;padding:10px;display:none;}
+#plotBox img{max-width:100%;margin-bottom:10px;}
+</style>
+
+</head>
+<body>
+
+<h3>RLC Circuit Calculations</h3>
+
+<div class="editor">
+<pre id="lineNumbers"></pre>
+<textarea id="code" wrap="off">import numpy as np
+
+# Given values
+V_peak = 12  # Peak voltage in volts
+f = 60       # Frequency in Hz
+R = 15       # Resistance in ohms
+L = 50e-3    # Inductance in henries
+C = 100e-6   # Capacitance in farads
+
+# Calculate angular frequency
+omega = 2 * np.pi * f
+
+# Calculate inductive reactance
+X_L = omega * L
+
+# Calculate capacitive reactance
+X_C = 1 / (omega * C)
+
+# Calculate impedance
+Z = np.sqrt(R**2 + (X_L - X_C)**2)
+
+# Calculate peak current
+I_peak = V_peak / Z
+
+# Calculate voltages across each component
+V_R = I_peak * R
+V_L = I_peak * X_L
+V_C = I_peak * X_C
+
+# Calculate phase difference in degrees
+phi = np.degrees(np.arctan((X_L - X_C) / R))
+
+# Print the results
+print("Angular frequency (ω):", omega, "rad/s")
+print("Inductive reactance (X_L):", X_L, "ohms")
+print("Capacitive reactance (X_C):", X_C, "ohms")
+print("Impedance (Z):", Z, "ohms")
+print("Peak current (I_peak):", I_peak, "A")
+print("Voltage across R (V_R):", V_R, "V")
+print("Voltage across L (V_L):", V_L, "V")
+print("Voltage across C (V_C):", V_C, "V")
+print("Phase difference (φ):", phi, "degrees")
+</textarea>
+</div>
+
+<button onclick="run()">Run Code</button>
+
+<div id="output"></div>
+
+<div id="plotBox">
+<img id="plot1">
+</div>
+
+<script>
+const codeEl=document.getElementById("code");
+const lineNumbers=document.getElementById("lineNumbers");
+const plotBox=document.getElementById("plotBox");
+const output=document.getElementById("output");
+
+function updateLineNumbers(){
+    const lines=codeEl.value.split("\n").length;
+    let nums="";
+    for(let i=1;i<=lines;i++) nums+=i+"\n";
+    lineNumbers.textContent=nums;
+}
+
+codeEl.addEventListener("input", updateLineNumbers);
+codeEl.addEventListener("scroll", ()=> lineNumbers.scrollTop = codeEl.scrollTop);
+updateLineNumbers();
+
+let pyodideReady = loadPyodide();
+
+async function run(){
+    plotBox.style.display="none";
+    output.textContent="Running..."; output.style.display="block";
+    let pyodide = await pyodideReady;
+    await pyodide.loadPackage(["numpy"]);
+    await pyodide.runPythonAsync(`
+import sys, io
+sys.stdout = io.StringIO()
+`);
+    await pyodide.runPythonAsync(codeEl.value);
+
+    let stdout = await pyodide.runPythonAsync("sys.stdout.getvalue()");
+    output.textContent = stdout || "Execution complete."; output.style.display="block";
+
+}
+
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>EXP_5_6_1b_WIDGET</title>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+
+<style>
+body{background:#1e1e1e;color:white;font-family:monospace;padding:15px;}
+.editor{display:flex;border:1px solid #444;height:340px;}
+#lineNumbers{background:#111;color:#00ff00;padding:10px 8px;margin:0;text-align:right;overflow:hidden;white-space:pre;}
+#code{flex:1;background:#111;color:white;border:none;padding:10px;resize:none;overflow:auto;white-space:pre;}
+button{margin-top:10px;margin-right:10px;padding:8px 14px;background:#007acc;color:white;border:none;cursor:pointer;}
+#output{margin-top:15px;background:#000;color:#0f0;padding:10px;white-space:pre-wrap;display:none;border:1px solid #333;}
+#plotBox{margin-top:15px;background:white;padding:10px;display:none;}
+#plotBox img{max-width:100%;margin-bottom:10px;}
+</style>
+
+</head>
+<body>
+
+<h3>RLC Phasor Diagram</h3>
+
+<div class="editor">
+<pre id="lineNumbers"></pre>
+<textarea id="code" wrap="off">import numpy as np
+import matplotlib.pyplot as plt
+
+# Given values
+V_peak = 10      # Peak voltage in volts
+f = 50           # Frequency in Hz
+R = 10           # Resistance in ohms
+L = .05         # Inductance in henries
+C = 100e-6       # Capacitance in farads
+
+# Calculations
+omega = 2 * np.pi * f               # Angular frequency
+X_L = omega * L                      # Inductive reactance
+X_C = 1 / (omega * C)                # Capacitive reactance
+Z = np.sqrt(R**2 + (X_L - X_C)**2)   # Impedance
+I_peak = V_peak / Z                  # Peak current
+phi = np.arctan((X_L - X_C) / R)     # Phase difference in radians
+
+# Phasor magnitudes
+V_R = I_peak * R                     # Voltage across resistor
+V_L = I_peak * X_L                   # Voltage across inductor
+V_C = I_peak * X_C                   # Voltage across capacitor
+
+# Set up the plot
+fig, ax = plt.subplots(figsize=(8, 8))
+ax.set_aspect('equal')
+
+# Draw the resistor voltage (V_R) vector along the x-axis
+ax.quiver(0, 0, V_R, 0, angles='xy', scale_units='xy', scale=1, color='red', label=r"$V_R$ (in-phase with current)")
+
+# Draw the inductor voltage (V_L) vector perpendicular to V_R, pointing upwards
+ax.quiver(0, 0, 0, V_L, angles='xy', scale_units='xy', scale=1, color='blue', label=r"$V_L$ (90° ahead of current)")
+
+# Draw the capacitor voltage (V_C) vector perpendicular to V_R, pointing downwards
+ax.quiver(0, 0, 0, -V_C, angles='xy', scale_units='xy', scale=1, color='orange', label=r"$V_C$ (90° lagging current)")
+
+# Draw the resultant voltage (V)
+V_total_x = V_R
+V_total_y = V_L - V_C
+ax.quiver(0, 0, V_total_x, V_total_y, angles='xy', scale_units='xy', scale=1, color='purple', label=r"$V$ (circuit potential)")
+
+# Annotate the phase angle
+ax.text(V_R / 2, 0.1 * V_total_y, r"$\phi$", fontsize=12, color='black')
+
+# Draw current vector
+ax.quiver(0, 0, 0.8 * V_R, 0, angles='xy', scale_units='xy', scale=1, color='green', width=0.008, label="Current (I)")
+
+# Setting up the labels and grid
+plt.xlim(-V_peak, V_peak)
+plt.ylim(-V_peak, V_peak)
+ax.set_xlabel("Real Axis (Voltage)")
+ax.set_ylabel("Imaginary Axis (Voltage)")
+plt.title("Phasor Diagram for an RLC Circuit in AC")
+plt.grid(True)
+plt.axhline(0, linewidth=0.5)
+plt.axvline(0, linewidth=0.5)
+plt.legend()
+
+plt.tight_layout()
+</textarea>
+</div>
+
+<button onclick="run()">Run Code</button>
+<button onclick="savePNG()">Save PNG</button>
+<button onclick="savePDF()">Save PDF</button>
+
+
+
+<div id="plotBox">
+<img id="plot1">
+</div>
+
+<script>
+const codeEl=document.getElementById("code");
+const lineNumbers=document.getElementById("lineNumbers");
+const plotBox=document.getElementById("plotBox");
+
+
+function updateLineNumbers(){
+    const lines=codeEl.value.split("\n").length;
+    let nums="";
+    for(let i=1;i<=lines;i++) nums+=i+"\n";
+    lineNumbers.textContent=nums;
+}
+
+codeEl.addEventListener("input", updateLineNumbers);
+codeEl.addEventListener("scroll", ()=> lineNumbers.scrollTop = codeEl.scrollTop);
+updateLineNumbers();
+
+let pyodideReady = loadPyodide();
+
+async function run(){
+    plotBox.style.display="none";
+    
+    let pyodide = await pyodideReady;
+    await pyodide.loadPackage(["numpy","matplotlib"]);
+    await pyodide.runPythonAsync(`
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+plt.close('all')
+from io import BytesIO
+import base64
+`);
+    await pyodide.runPythonAsync(codeEl.value);
+
+    const figCount = await pyodide.runPythonAsync("len(plt.get_fignums())");
+    if (figCount > 0) {
+        let img = await pyodide.runPythonAsync(`
+buf=BytesIO()
+plt.savefig(buf,format="png")
+buf.seek(0)
+base64.b64encode(buf.read()).decode()
+`);
+        document.getElementById("plot1").src="data:image/png;base64,"+img;
+        plotBox.style.display="block";
+
+        await pyodide.runPythonAsync(`
+plt.savefig("plot.png")
+plt.savefig("plot.pdf")
+`);
+    }
+
+}
+
+
+async function savePNG(){
+    let pyodide = await pyodideReady;
+    let f = pyodide.FS.readFile("plot.png");
+    let a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([f],{type:"image/png"}));
+    a.download="plot.png";
+    a.click();
+}
+
+async function savePDF(){
+    let pyodide = await pyodideReady;
+    let f = pyodide.FS.readFile("plot.pdf");
+    let a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([f],{type:"application/pdf"}));
+    a.download="plot.pdf";
+    a.click();
+}
+
+</script>
+
+</body>
+</html>

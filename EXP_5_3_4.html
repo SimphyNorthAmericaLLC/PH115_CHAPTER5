@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>EXP_5_3_4_WIDGET</title>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+
+<style>
+body{background:#1e1e1e;color:white;font-family:monospace;padding:15px;}
+.editor{display:flex;border:1px solid #444;height:340px;}
+#lineNumbers{background:#111;color:#00ff00;padding:10px 8px;margin:0;text-align:right;overflow:hidden;white-space:pre;user-select:none;}
+#code{flex:1;background:#111;color:white;border:none;padding:10px;resize:none;overflow:auto;white-space:pre;}
+button{margin-top:10px;margin-right:10px;padding:8px 14px;background:#007acc;color:white;border:none;cursor:pointer;}
+#output{background:#000;color:#0f0;padding:10px;margin-top:10px;white-space:pre-wrap;border:1px solid #333;display:none;}
+#plotBox{margin-top:15px;background:white;padding:10px;display:none;}
+#plotBox img{max-width:100%;margin-bottom:10px;}
+</style>
+</head>
+<body>
+
+<h3>Spring ↔ RLC Period Equivalence</h3>
+
+<div class="editor">
+<pre id="lineNumbers"></pre>
+<textarea id="code" wrap="off">import numpy as np
+
+def damped_spring_period(m, k, b):
+    """Calculate the period of a damped spring."""
+    omega_0 = np.sqrt(k / m)
+    zeta = b / (2 * np.sqrt(m * k))
+    omega_d = omega_0 * np.sqrt(1 - zeta**2)
+    period = 2 * np.pi / omega_d
+    return period
+
+def solve_for_L(T_spring, R, C, initial_L=0.1):
+    """
+    Solve for inductance L given the period of the damped spring,
+    resistance R, and capacitance C.
+    Uses an iterative approach to find L.
+    """
+    omega_0_RLC = 2 * np.pi / T_spring
+    
+    # Initial guess for L
+    L = initial_L
+    for _ in range(100):  # Maximum number of iterations
+        # Calculate the damping ratio
+        zeta = R / (2 * np.sqrt(L / C))
+        
+        # Ensure that the damping ratio is valid
+        if zeta >= 1:
+            print("Warning: Damping ratio is critically damped or overdamped.")
+            break
+        
+        # Calculate the current omega_d based on the guessed L
+        omega_d = omega_0_RLC * np.sqrt(1 - zeta**2)
+        
+        # Update L based on the desired period
+        new_L = 1 / (omega_0_RLC**2 * C * (1 - (R / (2 * np.sqrt(L / C)))**2))
+        
+        # Check for convergence
+        if np.isclose(new_L, L, rtol=1e-4):
+            return new_L
+        L = new_L  # Update L for the next iteration
+    
+    raise RuntimeError("Could not converge to a solution for L")
+
+# Given parameters for the damped spring
+m = 1.0  # Mass in kg
+k = 10.0  # Spring constant in N/m
+b = 0.5  # Damping coefficient in kg/s
+
+# Given parameters for the RLC circuit
+R = 1.0  # Resistance in Ω
+C = 0.01  # Capacitance in F
+
+# Display chosen values
+print("Chosen Values:")
+print(f"Mass (m): {m} kg")
+print(f"Spring Constant (k): {k} N/m")
+print(f"Damping Coefficient (b): {b} kg/s")
+print(f"Resistance (R): {R} Ω")
+print(f"Capacitance (C): {C} F")
+
+# Calculate the period of the damped spring
+T_spring = damped_spring_period(m, k, b)
+print(f"Damped Spring Period: {T_spring:.4f} seconds")
+
+# Calculate the inductance L
+L = solve_for_L(T_spring, R, C)
+print(f"Calculated Inductance L: {L:.4f} H")
+</textarea>
+</div>
+
+<button onclick="run()">Run Code</button>
+
+<div id="output"></div>
+
+<div id="plotBox">
+<img id="plot1">
+</div>
+
+<script>
+const codeEl=document.getElementById("code");
+const lineNumbers=document.getElementById("lineNumbers");
+const plotBox=document.getElementById("plotBox");
+const output=document.getElementById("output");
+
+function updateLineNumbers(){
+    const lines=codeEl.value.split("\n").length;
+    let nums="";
+    for(let i=1;i<=lines;i++) nums+=i+"\n";
+    lineNumbers.textContent=nums;
+}
+
+codeEl.addEventListener("input", updateLineNumbers);
+codeEl.addEventListener("scroll", ()=> lineNumbers.scrollTop = codeEl.scrollTop);
+updateLineNumbers();
+
+let pyodideReady = loadPyodide();
+
+async function run(){
+    plotBox.style.display="none";
+    output.textContent="Running...";
+    output.style.display="block";
+
+    try{
+        let pyodide = await pyodideReady;
+        await pyodide.loadPackage(["numpy"]);
+        await pyodide.runPythonAsync(`
+import sys, io
+sys.stdout = io.StringIO()
+`);
+        await pyodide.runPythonAsync(codeEl.value);
+
+        let stdout = await pyodide.runPythonAsync("sys.stdout.getvalue()");
+        output.textContent = stdout || "Execution complete.";
+    } catch(err){
+        output.textContent = String(err);
+    }
+}
+
+
+</script>
+
+</body>
+</html>

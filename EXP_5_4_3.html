@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>EXP_5_4_3_interactive_phase.html</title>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+
+<style>
+body{background:#1e1e1e;color:white;font-family:monospace;padding:15px;}
+.editor{display:flex;border:1px solid #444;height:340px;}
+#lineNumbers{background:#111;color:#00ff00;padding:10px 8px;margin:0;text-align:right;overflow:hidden;white-space:pre;user-select:none;}
+#code{flex:1;background:#111;color:white;border:none;padding:10px;resize:none;overflow:auto;white-space:pre;}
+button{margin-top:10px;margin-right:10px;padding:8px 14px;background:#007acc;color:white;border:none;cursor:pointer;}
+#output{background:#000;color:#0f0;padding:10px;margin-top:10px;white-space:pre-wrap;border:1px solid #333;display:none;}
+#plotBox{margin-top:15px;background:white;padding:10px;display:none;}
+#plotInteractive{width:100%;height:560px;}
+#phaseBox{margin-top:12px;background:#111;color:#fff;padding:10px;border:1px solid #333;display:none;white-space:pre-wrap;}
+</style>
+</head>
+<body>
+
+<h3>RL Circuit Voltage & Current (Separate Axes)</h3>
+
+<div class="editor">
+<pre id="lineNumbers"></pre>
+<textarea id="code" wrap="off">import numpy as np
+import matplotlib.pyplot as plt
+
+# Given parameters for the RL circuit in AC
+V_peak = 10       # Peak voltage in volts
+f = 100           # Frequency in Hz
+R = 10            # Resistance in ohms
+L = 8.2e-3        # Inductance in henries
+
+# Calculated parameters
+omega = 2 * np.pi * f
+X_L = omega * L
+Z = np.sqrt(R**2 + X_L**2)
+I_peak = V_peak / Z
+phi = np.arctan(X_L / R)  # Phase difference in radians
+phi_degrees = np.degrees(phi)
+
+# Print calculated values
+print("Calculated Values for RL Circuit:")
+print(f"Angular frequency (ω): {omega:.2f} rad/s")
+print(f"Inductive reactance (X_L): {X_L:.2f} Ω")
+print(f"Impedance (Z): {Z:.2f} Ω")
+print(f"Peak current (I_peak): {I_peak:.2f} A")
+print(f"Voltage across R (V_R): {I_peak * R:.2f} V")
+print(f"Voltage across L (V_L): {I_peak * X_L:.2f} V")
+print(f"Phase difference (φ): {phi_degrees:.2f}°")
+
+# Time array for plotting (one period of the AC cycle)
+t = np.linspace(0, 1 / f, 1000)  # One period
+
+# Voltage across the source
+V_source = V_peak * np.sin(omega * t)
+
+# Current in the circuit
+I = I_peak * np.sin(omega * t - phi)
+
+# Plotting with separate y-axes for voltage and current
+fig, ax1 = plt.subplots(figsize=(10, 6))
+
+# Plot source voltage on the left y-axis
+ax1.plot(t, V_source, label="Source Voltage (V)", linestyle='--', color='orange')
+ax1.set_xlabel("Time (s)")
+ax1.set_ylabel("Voltage (V)", color='orange')
+ax1.tick_params(axis='y', labelcolor='orange')
+
+# Create a second y-axis for the current
+ax2 = ax1.twinx()
+ax2.plot(t, I, label="Current (I)", linestyle='-', color='blue')
+ax2.set_ylabel("Current (A)", color='blue')
+ax2.tick_params(axis='y', labelcolor='blue')
+
+# Title and grid
+fig.suptitle("Voltage and Current in RL Circuit with Separate Y-Axes")
+ax1.grid(True)
+
+plt.tight_layout()
+</textarea>
+</div>
+
+<button onclick="run()">Run Code</button>
+<button onclick="savePNG()">Save PNG</button>
+<button onclick="savePDF()">Save PDF</button>
+
+<div id="output"></div>
+<div id="phaseBox"></div>
+
+<div id="plotBox">
+  <div id="plotInteractive"></div>
+</div>
+
+<script>
+const codeEl=document.getElementById("code");
+const lineNumbers=document.getElementById("lineNumbers");
+const plotBox=document.getElementById("plotBox");
+const output=document.getElementById("output");
+const phaseBox=document.getElementById("phaseBox");
+const plotDiv=document.getElementById("plotInteractive");
+
+function updateLineNumbers(){
+    const lines=codeEl.value.split("\n").length;
+    let nums="";
+    for(let i=1;i<=lines;i++) nums+=i+"\n";
+    lineNumbers.textContent=nums;
+}
+
+codeEl.addEventListener("input", updateLineNumbers);
+codeEl.addEventListener("scroll", ()=> lineNumbers.scrollTop = codeEl.scrollTop);
+updateLineNumbers();
+
+let pyodideReady = loadPyodide();
+
+function firstPeakIndex(arr){
+    for(let i=1;i<arr.length-1;i++){
+        if(arr[i] >= arr[i-1] && arr[i] >= arr[i+1]) return i;
+    }
+    return 0;
+}
+
+async function run(){
+    plotBox.style.display="none";
+    phaseBox.style.display="none";
+    output.textContent="Running...";
+    output.style.display="block";
+
+    try{
+        let pyodide = await pyodideReady;
+        await pyodide.loadPackage(["numpy","matplotlib"]);
+        await pyodide.runPythonAsync(`
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+plt.close('all')
+from io import BytesIO
+import base64
+import json
+import sys, io
+sys.stdout = io.StringIO()
+`);
+        await pyodide.runPythonAsync(codeEl.value);
+
+        let stdout = await pyodide.runPythonAsync("sys.stdout.getvalue()");
+        output.textContent = stdout || "Execution complete.";
+
+        await pyodide.runPythonAsync(`
+plot_payload = json.dumps({
+    "t": np.asarray(t, dtype=float).tolist(),
+    "V_source": np.asarray(V_source, dtype=float).tolist(),
+    "I": np.asarray(I, dtype=float).tolist()
+})
+`);
+        const payloadText = await pyodide.runPythonAsync("plot_payload");
+        const payload = JSON.parse(payloadText);
+
+        const idxV = firstPeakIndex(payload.V_source);
+        const idxI = firstPeakIndex(payload.I);
+        const tV = payload.t[idxV];
+        const tI = payload.t[idxI];
+        const deltaT = tV - tI;
+        const period = payload.t[payload.t.length - 1] - payload.t[0];
+        const phiDegFromPeaks = 360 * deltaT / period;
+
+        phaseBox.textContent =
+            `First voltage peak time: ${tV.toExponential(6)} s\n` +
+            `First current peak time: ${tI.toExponential(6)} s\n` +
+            `Time difference Δt = ${deltaT.toExponential(6)} s\n` +
+            `Phase difference from peaks = ${phiDegFromPeaks.toFixed(2)}°`;
+        phaseBox.style.display = "block";
+
+        const traces = [
+            {
+                x: payload.t,
+                y: payload.V_source,
+                mode: "lines",
+                name: "Source Voltage (V)",
+                line: {dash: "dash"},
+                yaxis: "y",
+                hovertemplate: "t = %{x:.6e} s<br>V = %{y:.6f} V<extra></extra>"
+            },
+            {
+                x: payload.t,
+                y: payload.I,
+                mode: "lines",
+                name: "Current (I)",
+                yaxis: "y2",
+                hovertemplate: "t = %{x:.6e} s<br>I = %{y:.6f} A<extra></extra>"
+            },
+            {
+                x: [tV],
+                y: [payload.V_source[idxV]],
+                mode: "markers",
+                name: "Voltage peak",
+                yaxis: "y",
+                marker: {size: 9}
+            },
+            {
+                x: [tI],
+                y: [payload.I[idxI]],
+                mode: "markers",
+                name: "Current peak",
+                yaxis: "y2",
+                marker: {size: 9, symbol: "diamond"}
+            }
+        ];
+
+        const layout = {
+            title: "Voltage and Current in RL Circuit with Separate Y-Axes",
+            paper_bgcolor: "white",
+            plot_bgcolor: "white",
+            font: {color: "black"},
+            margin: {l: 70, r: 70, t: 50, b: 60},
+            xaxis: {title: "Time (s)", showgrid: true, zeroline: false},
+            yaxis: {title: "Voltage (V)", showgrid: true, zeroline: false},
+            yaxis2: {title: "Current (A)", overlaying: "y", side: "right", showgrid: false, zeroline: false},
+            legend: {orientation: "h"}
+        };
+
+        await Plotly.newPlot(plotDiv, traces, layout, {responsive:true, displaylogo:false});
+        plotBox.style.display = "block";
+
+        await pyodide.runPythonAsync(`
+plt.savefig("plot.png")
+plt.savefig("plot.pdf")
+`);
+    } catch(err){
+        output.textContent = String(err);
+    }
+}
+
+async function savePNG(){
+    await Plotly.downloadImage(plotDiv, {
+        format: "png",
+        filename: "EXP_5_4_3_interactive_phase",
+        width: 1200,
+        height: 700,
+        scale: 2
+    });
+}
+
+async function savePDF(){
+    let pyodide = await pyodideReady;
+    let f = pyodide.FS.readFile("plot.pdf");
+    let a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([f],{type:"application/pdf"}));
+    a.download="plot.pdf";
+    a.click();
+}
+</script>
+
+</body>
+</html>

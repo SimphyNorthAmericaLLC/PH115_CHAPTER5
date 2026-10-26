@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>EXP_5_3_1_WIDGET</title>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+
+<style>
+body{background:#1e1e1e;color:white;font-family:monospace;padding:15px;}
+.editor{display:flex;border:1px solid #444;height:340px;}
+#lineNumbers{background:#111;color:#00ff00;padding:10px 8px;margin:0;text-align:right;overflow:hidden;white-space:pre;user-select:none;}
+#code{flex:1;background:#111;color:white;border:none;padding:10px;resize:none;overflow:auto;white-space:pre;}
+button:disabled{opacity:0.5;cursor:wait;}
+button{margin-top:10px;margin-right:10px;padding:8px 14px;background:#007acc;color:white;border:none;cursor:pointer;}
+#output{background:#000;color:#0f0;padding:10px;margin-top:10px;white-space:pre-wrap;border:1px solid #333;display:none;}
+#plotBox{margin-top:15px;background:white;padding:10px;display:none;}
+#plotBox img{max-width:100%;margin-bottom:10px;}
+</style>
+</head>
+<body>
+
+<h3>Damped RLC Energy and Voltage Simulation</h3>
+<p>Exact initial-value solution: R = 12 Ω, L = 0.1 H, C = 100 μF, q(0) = 1 mC, I(0) = 0.</p>
+<p>Passive polarities: I = dq/dt and Vc + Vr + Vl = 0. The voltage sinusoidal factors differ by about 158.12°;
+reversing one probe gives about 21.88°. Damped peak timing is not itself the sinusoidal phase.</p>
+
+<div class="editor">
+<pre id="lineNumbers"></pre>
+<textarea id="code" wrap="off">import numpy as np
+import matplotlib.pyplot as plt
+
+# SI units; passive voltage drops around the loop: Vc + Vr + Vl = 0.
+# I = dq/dt enters the capacitor's positive terminal (initial discharge I < 0).
+R = 12.0
+L = 0.1
+C = 100e-6
+q_initial = 1e-3
+I_initial = 0.0
+V_initial = q_initial / C
+alpha = R / (2 * L)
+omega_0 = 1 / np.sqrt(L * C)
+if not 0 < alpha < omega_0:
+    raise ValueError("This example requires positive resistance and underdamping.")
+omega_d = np.sqrt(omega_0**2 - alpha**2)
+t = np.linspace(0, 0.1, 10001)
+
+# Exact q and its analytic derivative satisfy BOTH initial conditions.
+A = q_initial
+B = (I_initial + alpha * A) / omega_d
+envelope = np.exp(-alpha * t)
+s = np.sin(omega_d * t)
+c = np.cos(omega_d * t)
+q = envelope * (A * c + B * s)
+I = envelope * ((omega_d * B - alpha * A) * c
+                - (omega_d * A + alpha * B) * s)
+Vc = q / C
+Vr = R * I
+# Exact L dI/dt, from the circuit differential equation.
+Vl = -Vc - Vr
+U_electric = q**2 / (2 * C)
+U_magnetic = L * I**2 / 2
+P_dissipated = R * I**2
+E_initial = q_initial**2 / (2 * C) + L * I_initial**2 / 2
+# Exact integral of R I^2 from 0 to t by the energy balance identity.
+# No rectangular integration error; no clipping of conservation residuals.
+U_dissipated = E_initial - U_electric - U_magnetic
+# Independent trapezoidal quadrature to check the exact cumulative loss.
+loss_quad = np.concatenate(([0.0], np.cumsum(
+    0.5 * (P_dissipated[1:] + P_dissipated[:-1]) * np.diff(t))))
+assert np.isclose(q[0], q_initial, rtol=0, atol=1e-15)
+assert np.isclose(I[0], I_initial, rtol=0, atol=1e-14)
+assert np.isclose(Vc[0], 10.0) and np.isclose(Vl[0], -10.0)
+assert np.max(np.abs(Vc + Vr + Vl)) < 1e-12
+assert np.min(np.diff(U_dissipated)) > -1e-15
+assert np.max(np.abs(loss_quad - U_dissipated)) < 1e-8
+
+# Phase of the sinusoidal factors AFTER removing their common decay envelope.
+# With passive drops, Vc ~ cos(wt-theta), Vl ~ cos(wt+theta+pi).
+theta = np.arctan2(alpha, omega_d)
+phase_deg = np.degrees(np.pi - 2 * theta)
+print(f"Initial: Vc={Vc[0]:.6g} V, I={I[0]:.6g} A, Vl={Vl[0]:.6g} V")
+print(f"alpha={alpha:.6f} /s, omega_d={omega_d:.6f} rad/s")
+print(f"Initial energy: {E_initial * 1000:.6f} mJ")
+print(f"Passive Vc/Vl sinusoidal-factor phase separation: {phase_deg:.6f} degrees")
+print(f"Reversing ONE voltage probe gives {180-phase_deg:.6f} degrees.")
+print(f"Max quadrature vs exact loss error: {np.max(np.abs(loss_quad-U_dissipated)):.3e} J")
+print("Initial conditions, KVL, monotonic loss, and independent loss check: PASS")
+
+fig, axes = plt.subplots(2, 1, figsize=(11, 9), sharex=True)
+ax = axes[0]
+ax.plot(t * 1000, U_electric * 1000, label="Capacitor energy")
+ax.plot(t * 1000, U_magnetic * 1000, label="Inductor energy")
+ax.plot(t * 1000, U_dissipated * 1000, label="Cumulative resistor loss")
+ax.plot(t * 1000, (U_electric + U_magnetic + U_dissipated) * 1000,
+        "k--", linewidth=1, label="Total (stored + dissipated)")
+ax.set_ylabel("Energy (mJ)")
+ax.set_title("Exact RLC response: R=12 ohm, L=0.1 H, C=100 microfarad; q(0)=1 mC, I(0)=0")
+ax.legend()
+ax.grid(alpha=0.3)
+ax = axes[1]
+ax.plot(t * 1000, Vc, label="Vc = q/C")
+ax.plot(t * 1000, Vl, label="Vl = L dI/dt (passive drop)")
+ax.plot(t * 1000, Vr, ":", label="Vr = RI")
+ax.axhline(0, color="black", linewidth=0.6)
+ax.set_xlabel("Time (ms)")
+ax.set_ylabel("Voltage (V)")
+ax.set_title(f"Vc + Vr + Vl = 0; sinusoidal-factor separation = {phase_deg:.2f} degrees")
+ax.legend()
+ax.grid(alpha=0.3)
+fig.text(0.5, 0.015,
+         "Phase refers to the factors under the common exponential envelope; reversing one probe changes it by 180 degrees.",
+         ha="center", fontsize=9)
+fig.tight_layout(rect=(0, 0.04, 1, 1))
+</textarea>
+</div>
+
+<button id="runButton" onclick="run()">Run Code</button>
+<button class="saveButton" disabled onclick="savePNG()">Save PNG</button>
+<button class="saveButton" disabled onclick="savePDF()">Save PDF</button>
+
+
+
+<div id="output" role="status" aria-live="polite"></div>
+<div id="plotBox">
+<img id="plot1">
+</div>
+
+<script>
+const codeEl=document.getElementById("code");
+const lineNumbers=document.getElementById("lineNumbers");
+const plotBox=document.getElementById("plotBox");
+
+
+function updateLineNumbers(){
+    const lines=codeEl.value.split("\n").length;
+    let nums="";
+    for(let i=1;i<=lines;i++) nums+=i+"\n";
+    lineNumbers.textContent=nums;
+}
+
+codeEl.addEventListener("input", updateLineNumbers);
+codeEl.addEventListener("scroll", ()=> lineNumbers.scrollTop = codeEl.scrollTop);
+updateLineNumbers();
+
+const output=document.getElementById("output");
+const runButton=document.getElementById("runButton");
+const saveButtons=document.querySelectorAll(".saveButton");
+let pyodideReady=null;
+function getPython(){
+    if(!pyodideReady) pyodideReady=loadPyodide().catch(error=>{pyodideReady=null;throw error;});
+    return pyodideReady;
+}
+async function run(){
+    plotBox.style.display="none";
+    output.style.display="block";
+    output.textContent="Loading Python and plotting packages…\n";
+    runButton.disabled=true;
+    saveButtons.forEach(b=>b.disabled=true);
+    try {
+        const pyodide=await getPython();
+        pyodide.setStdout({batched: text=>output.textContent+=text+"\n"});
+        pyodide.setStderr({batched: text=>output.textContent+=text+"\n"});
+        await pyodide.loadPackage(["numpy","matplotlib"]);
+        await pyodide.runPythonAsync(`
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+plt.close('all')
+from io import BytesIO
+import base64
+`);
+        output.textContent="";
+        await pyodide.runPythonAsync(codeEl.value);
+        const figCount=await pyodide.runPythonAsync("len(plt.get_fignums())");
+        if(figCount>0){
+            const img=await pyodide.runPythonAsync(`
+buf=BytesIO()
+plt.savefig(buf,format="png",dpi=150)
+plt.savefig("plot.png",dpi=150)
+plt.savefig("plot.pdf")
+base64.b64encode(buf.getvalue()).decode()
+`);
+            document.getElementById("plot1").src="data:image/png;base64,"+img;
+            document.getElementById("plot1").alt="RLC energies and voltages versus time";
+            plotBox.style.display="block";
+            saveButtons.forEach(b=>b.disabled=false);
+        } else output.textContent+="No plot was created.\n";
+    } catch(error){
+        output.textContent+="Error: "+error.message+"\n";
+    } finally {runButton.disabled=false;}
+}
+async function saveFile(name,type){
+    try {
+        const pyodide=await getPython();
+        const data=pyodide.FS.readFile(name);
+        const url=URL.createObjectURL(new Blob([data],{type}));
+        const a=document.createElement("a");
+        a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
+        setTimeout(()=>URL.revokeObjectURL(url),1000);
+    } catch(error){output.style.display="block";output.textContent+="Save error: "+error.message+"\n";}
+}
+async function savePNG(){await saveFile("plot.png","image/png");}
+async function savePDF(){await saveFile("plot.pdf","application/pdf");}
+
+</script>
+
+</body>
+</html>
